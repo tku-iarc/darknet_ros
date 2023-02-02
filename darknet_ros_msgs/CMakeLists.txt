@@ -1,43 +1,33 @@
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.8)
 
 project(darknet_ros_msgs)
 
-set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
 
-find_package(catkin REQUIRED
-  COMPONENTS
-    actionlib_msgs
-    geometry_msgs
-    sensor_msgs
-    std_msgs
-    message_generation
+set(THIS_PACKAGE_INCLUDE_DEPENDS
+  std_msgs
+  sensor_msgs
+  geometry_msgs
+  actionlib_msgs
+  rosidl_default_generators
 )
 
-add_message_files(
-  FILES
-    BoundingBox.msg
-    BoundingBoxes.msg
-    ObjectCount.msg
+find_package(ament_cmake REQUIRED)
+foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
+  find_package(${Dependency} REQUIRED)
+endforeach()
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/BoundingBox.msg"
+  "msg/BoundingBoxes.msg"
+  "msg/ObjectCount.msg"
+  "action/CheckForObjects.action"
+DEPENDENCIES
+  ${THIS_PACKAGE_INCLUDE_DEPENDS}
 )
 
-add_action_files(
-  FILES
-    CheckForObjects.action
-)
+ament_export_dependencies(rosidl_default_runtime)
 
-generate_messages(
-  DEPENDENCIES
-    actionlib_msgs
-    geometry_msgs
-    sensor_msgs
-    std_msgs
-)
-
-catkin_package(
-  CATKIN_DEPENDS
-    actionlib_msgs
-    geometry_msgs
-    sensor_msgs
-    message_runtime
-    std_msgs
-)
+ament_package()

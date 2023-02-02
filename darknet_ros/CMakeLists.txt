@@ -1,8 +1,12 @@
 cmake_minimum_required(VERSION 3.5.1)
 project(darknet_ros)
 
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra)
+endif()
+
 # Set c++11 cmake flags
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_FLAGS "-Wall -Wno-unused-result -Wno-unknown-pragmas -Wno-unused-variable -Wfatal-errors -fPIC ${CMAKE_C_FLAGS}")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -49,39 +53,25 @@ endif ( X11_FOUND )
 find_package(Boost REQUIRED COMPONENTS thread)
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
-find_package(catkin REQUIRED
-  COMPONENTS
-    cv_bridge
-    roscpp
-    rospy
-    std_msgs
-    actionlib
-    darknet_ros_msgs
-    image_transport
-    nodelet
+
+set(THIS_PACKAGE_INCLUDE_DEPENDS
+  cv_bridge
+  rclcpp
+  rclpy
+  std_msgs
+  darknet_ros_msgs
+  image_transport
+  rclcpp_action
 )
+
+find_package(ament_cmake REQUIRED)
+foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
+  find_package(${Dependency} REQUIRED)
+endforeach()
 
 # Enable OPENCV in darknet
 add_definitions(-DOPENCV)
 add_definitions(-O4 -g)
-
-catkin_package(
-  INCLUDE_DIRS
-    include
-  LIBRARIES
-    ${PROJECT_NAME}_lib
-  CATKIN_DEPENDS
-    cv_bridge
-    roscpp
-    actionlib
-    rospy
-    std_msgs
-    darknet_ros_msgs
-    image_transport
-    nodelet
-  DEPENDS
-    Boost
-)
 
 include_directories(
   ${DARKNET_PATH}/src
@@ -150,6 +140,8 @@ if (CUDA_FOUND)
     ${DARKNET_CUDA_FILES}
   )
 
+  ament_target_dependencies(${PROJECT_NAME}_lib ${THIS_PACKAGE_INCLUDE_DEPENDS})
+
   target_link_libraries(${PROJECT_NAME}_lib
     cuda
     cudart
@@ -161,9 +153,11 @@ if (CUDA_FOUND)
     src/yolo_object_detector_node.cpp
   )
 
-  cuda_add_library(${PROJECT_NAME}_nodelet
-    src/yolo_object_detector_nodelet.cpp
-  )
+  ament_target_dependencies(${PROJECT_NAME} ${THIS_PACKAGE_INCLUDE_DEPENDS})
+
+  # cuda_add_library(${PROJECT_NAME}_nodelet
+  #   src/yolo_object_detector_nodelet.cpp
+  # )
 
 else()
 
@@ -171,13 +165,17 @@ else()
     ${PROJECT_LIB_FILES} ${DARKNET_CORE_FILES}
   )
 
+  ament_target_dependencies(${PROJECT_NAME}_lib ${THIS_PACKAGE_INCLUDE_DEPENDS})
+
   add_executable(${PROJECT_NAME}
     src/yolo_object_detector_node.cpp
   )
 
-  add_library(${PROJECT_NAME}_nodelet
-    src/yolo_object_detector_nodelet.cpp
-  )
+  ament_target_dependencies(${PROJECT_NAME} ${THIS_PACKAGE_INCLUDE_DEPENDS})
+
+  # add_library(${PROJECT_NAME}_nodelet
+  #   src/yolo_object_detector_nodelet.cpp
+  # )
 
 endif()
 
@@ -195,32 +193,32 @@ target_link_libraries(${PROJECT_NAME}
   ${PROJECT_NAME}_lib
 )
 
-target_link_libraries(${PROJECT_NAME}_nodelet
-  ${PROJECT_NAME}_lib
+# target_link_libraries(${PROJECT_NAME}_nodelet
+#   ${PROJECT_NAME}_lib
+# )
+
+# add_dependencies(${PROJECT_NAME}_lib
+#   darknet_ros_msgs_generate_messages_cpp
+# )
+
+install(TARGETS ${PROJECT_NAME}_lib ${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
-add_dependencies(${PROJECT_NAME}_lib
-  darknet_ros_msgs_generate_messages_cpp
-)
-
-install(TARGETS ${PROJECT_NAME}_lib
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
-
-install(TARGETS ${PROJECT_NAME}
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
+# install(TARGETS ${PROJECT_NAME}
+#   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+# )
 
 install(
-  DIRECTORY include/${PROJECT_NAME}/
-  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  DIRECTORY include/
+  DESTINATION include/
   FILES_MATCHING PATTERN "*.h"
 )
 
 install(DIRECTORY config launch yolo_network_config
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  DESTINATION share/${PROJECT_NAME}
 )
 
 # Download yolov2-tiny.weights
@@ -240,31 +238,34 @@ if (NOT EXISTS "${FILE}")
   execute_process(COMMAND wget -q https://github.com/leggedrobotics/darknet_ros/releases/download/1.1.4/yolov3.weights -P ${PATH})
 endif()
 
+install(DIRECTORY yolo_network_config/cfg yolo_network_config/weights DESTINATION share/${PROJECT_NAME}/yolo_network_config/)
+install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME}/)
+
 #############
 ## Testing ##
 #############
 
-if(CATKIN_ENABLE_TESTING)
-  # Download yolov2.weights
-  set(PATH "${CMAKE_CURRENT_SOURCE_DIR}/yolo_network_config/weights")
-  set(FILE "${PATH}/yolov2.weights")
-  message(STATUS "Checking and downloading yolov2.weights if needed ...")
-  if (NOT EXISTS "${FILE}")
-    message(STATUS "... file does not exist. Downloading now ...")
-    execute_process(COMMAND wget -q https://github.com/leggedrobotics/darknet_ros/releases/download/1.1.4/yolov2.weights -P ${PATH})
-  endif()
+if(BUILD_TESTING)
+  # # Download yolov2.weights
+  # set(PATH "${CMAKE_CURRENT_SOURCE_DIR}/yolo_network_config/weights")
+  # set(FILE "${PATH}/yolov2.weights")
+  # message(STATUS "Checking and downloading yolov2.weights if needed ...")
+  # if (NOT EXISTS "${FILE}")
+  #   message(STATUS "... file does not exist. Downloading now ...")
+  #   execute_process(COMMAND wget -q https://github.com/leggedrobotics/darknet_ros/releases/download/1.1.4/yolov2.weights -P ${PATH})
+  # endif()
 
-  find_package(rostest REQUIRED)
+  # find_package(rostest REQUIRED)
 
-  # Object detection in images.
-  add_rostest_gtest(${PROJECT_NAME}_object_detection-test
-    test/object_detection.test
-    test/test_main.cpp
-    test/ObjectDetection.cpp
-  )
-  target_link_libraries(${PROJECT_NAME}_object_detection-test
-    ${catkin_LIBRARIES}
-  )
+  # # Object detection in images.
+  # add_rostest_gtest(${PROJECT_NAME}_object_detection-test
+  #   test/object_detection.test
+  #   test/test_main.cpp
+  #   test/ObjectDetection.cpp
+  # )
+  # target_link_libraries(${PROJECT_NAME}_object_detection-test
+  #   ${catkin_LIBRARIES}
+  # )
 endif()
 
 #########################
@@ -280,3 +281,9 @@ if (cmake_clang_tools_FOUND)
     CF_WERROR
   )
 endif (cmake_clang_tools_FOUND)
+
+ament_export_include_directories(include)
+ament_export_libraries(${PROJECT_NAME}_lib)
+ament_export_dependencies(${dependencies})
+
+ament_package()
